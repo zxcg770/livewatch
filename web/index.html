@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 盯播 · LiveWatch</title>
+<style>
+:root{
+  --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a; --text:#e6e8ec; --muted:#8b93a3;
+  --accent:#4f8cff; --high:#ff5d5d; --medium:#ffb347; --low:#7fb7ff; --ok:#3ecf8e;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.danger:hover{border-color:var(--high);color:var(--high)}
+input,select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+.app{display:flex;flex-direction:column;height:100%}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:16px;margin:0;white-space:nowrap}
+header h1 span{color:var(--accent)}
+.badge{font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.badge.on{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 50%,transparent)}
+.badge.off{color:var(--medium);border-color:color-mix(in srgb,var(--medium) 50%,transparent)}
+.addbar{display:flex;gap:8px;align-items:center;flex:1;justify-content:flex-end;flex-wrap:wrap}
+.addbar input.target{flex:1;min-width:260px;max-width:520px}
+.addbar label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px}
+.addbar input.num{width:62px}
+.tabs{display:flex;gap:6px;padding:8px 16px;border-bottom:1px solid var(--line);overflow-x:auto;min-height:46px}
+.tab{display:flex;align-items:center;gap:8px;padding:5px 12px;border-radius:8px;background:var(--panel);border:1px solid var(--line);cursor:pointer;white-space:nowrap}
+.tab.active{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel))}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.running{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.dot.error{background:var(--high)}
+.tab .count{background:var(--high);color:#fff;border-radius:99px;font-size:11px;padding:0 6px}
+main{flex:1;min-height:0;padding:12px 16px;display:flex;flex-direction:column;gap:12px}
+.empty{margin:auto;text-align:center;color:var(--muted);max-width:520px}
+.empty h2{color:var(--text);font-size:20px}
+.empty code{background:var(--panel2);padding:2px 6px;border-radius:4px;font-family:var(--mono);font-size:12px}
+.roomhead{display:flex;align-items:center;gap:14px}
+.roomhead .who{flex:1;min-width:0}
+.roomhead .who b{font-size:16px}
+.roomhead .who div{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clock{font-family:var(--mono);font-size:20px;font-variant-numeric:tabular-nums}
+.score{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;min-width:56px;text-align:center}
+.score small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .label{font-size:12px;color:var(--muted)}
+.kpi .val{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi .val small{font-size:12px;color:var(--muted);font-weight:400;margin-left:2px}
+.kpi .sub{font-size:12px;color:var(--muted)}
+.kpi.warn{border-color:color-mix(in srgb,var(--medium) 60%,transparent)} .kpi.warn .val{color:var(--medium)}
+.kpi.bad{border-color:color-mix(in srgb,var(--high) 60%,transparent)} .kpi.bad .val{color:var(--high)}
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:1.25fr 1.1fr 0.95fr;gap:12px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0}
+.panel h3{margin:0;padding:10px 12px;font-size:13px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.panel h3 .hint{font-weight:400;color:var(--muted);font-size:12px}
+.scroll{overflow-y:auto;flex:1;min-height:0;padding:8px 12px}
+.seg{padding:6px 0;border-bottom:1px dashed var(--line)}
+.seg .t{font-family:var(--mono);font-size:11px;color:var(--muted);margin-right:6px}
+.seg .tag{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-right:4px}
+.seg mark{background:color-mix(in srgb,var(--high) 30%,transparent);color:#fff;border-radius:3px;padding:0 2px}
+.alert{border-left:3px solid var(--low);background:var(--panel2);border-radius:6px;padding:8px 10px;margin-bottom:8px}
+.alert.high{border-left-color:var(--high)} .alert.medium{border-left-color:var(--medium)}
+.alert.fresh{animation:flash 1.2s ease-out}
+@keyframes flash{from{background:color-mix(in srgb,var(--high) 25%,var(--panel2))}}
+.alert .top{display:flex;gap:6px;align-items:center}
+.alert .title{font-weight:600;flex:1}
+.alert .src{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+.alert .x{font-size:11px;background:var(--line);border-radius:99px;padding:0 6px}
+.alert .meta{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.alert .detail{font-size:13px;color:#c9ced8;margin-top:2px}
+.alert .quote{font-size:12px;color:var(--muted);margin-top:4px;border-left:2px solid var(--line);padding-left:6px}
+.alert .tip{font-size:13px;margin-top:4px;color:var(--ok)}
+.filters{display:flex;gap:4px}
+.filters button{padding:1px 8px;font-size:12px;border-radius:99px}
+.filters button.on{border-color:var(--accent);color:var(--accent)}
+.summary{font-size:13px;padding:8px 12px;border-bottom:1px solid var(--line);color:#c9ced8;min-height:40px}
+.stages{padding:8px 12px;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;border-bottom:1px solid var(--line)}
+.stage{font-size:12px;display:flex;gap:6px;align-items:baseline}
+.stage .ck{width:14px;flex:none;text-align:center}
+.stage.yes .ck{color:var(--ok)} .stage.no .ck{color:var(--high)}
+.stage.cur b{color:var(--accent)}
+.stage .note{color:var(--muted);font-size:11px}
+.chart{padding:8px 12px}
+.chart .cap{font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+svg text{fill:var(--muted);font-size:10px}
+.muted{color:var(--muted)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:10}
+.modal.show{display:flex}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(900px,92vw);max-height:88vh;display:flex;flex-direction:column}
+.modal .box h2{margin:0;padding:12px 16px;font-size:16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.modal .body{padding:14px 16px;overflow:auto}
+textarea{width:100%;height:56vh;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font-family:var(--mono);font-size:12px;line-height:1.6}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:20}
+.toast div{background:var(--panel2);border:1px solid var(--high);border-radius:8px;padding:8px 12px;max-width:360px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>AI <span>盯播</span></h1>
+    <span id="llm" class="badge">…</span>
+    <div class="addbar">
+      <input id="target" class="target" placeholder="抖音直播间链接，如 https://live.douyin.com/295178185857，或本地音视频文件路径">
+      <select id="fw" title="话术框架"></select>
+      <label>窗口<input id="win" class="num" type="number" value="5" min="1" max="30">分</label>
+      <label>每<input id="intv" class="num" type="number" value="60" min="15" max="600">秒</label>
+      <label title="仅对本地文件生效，演示时加速回放">倍速<input id="speed" class="num" type="number" value="1" min="1" max="20" step="1"></label>
+      <button class="primary" id="add">开始盯播</button>
+      <button id="editfw">话术框架</button>
+    </div>
+  </header>
+  <div class="tabs" id="tabs"></div>
+  <main id="main"></main>
+</div>
+
+<div class="modal" id="fwModal"><div class="box">
+  <h2>话术框架 <span><select id="fwSel"></select> <button class="primary" id="fwSave">保存</button> <button data-close>关闭</button></span></h2>
+  <div class="body"><textarea id="fwText" spellcheck="false"></textarea><div class="muted" id="fwMsg" style="margin-top:6px;font-size:12px">修改后对新开的盯播任务生效</div></div>
+</div></div>
+<div class="modal" id="repModal"><div class="box">
+  <h2>场次复盘报告 <button data-close>关闭</button></h2>
+  <div class="body" id="repBody"></div>
+</div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = sec => { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  return (h ? h + ":" : "") + String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0"); };
+const SRC = {rule: "违禁词", metric: "表达", llm: "AI"};
+const STATUS = {starting: "连接中", running: "盯播中", stopping: "停止中", ended: "已结束", error: "出错"};
+
+let config = {frameworks: []};
+const rooms = {};       // id -> state
+let current = null;
+let alertFilter = "all";
+
+// ---------- 数据 ----------
+function upsert(snap) {
+  const r = rooms[snap.id] || (rooms[snap.id] = {segments: [], alerts: [], minute: [], analysis: null, unread: 0, window: null});
+  Object.assign(r, {snap});
+  if (snap.segments) r.segments = snap.segments.map(s => ({...s, hits: s.hits || []}));
+  if (snap.alerts) r.alerts = snap.alerts;
+  if (snap.minute_metrics) r.minute = snap.minute_metrics;
+  if (snap.analyses && snap.analyses.length) r.analysis = snap.analyses.at(-1);
+  return r;
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opts});
+  const body = res.headers.get("content-type")?.includes("json") ? await res.json() : await res.text();
+  if (!res.ok) throw new Error(body.detail || body);
+  return body;
+}
+
+async function init() {
+  config = await api("/api/config");
+  const llm = $("#llm");
+  llm.textContent = config.llm ? `AI 分析：${config.model}` : "AI 分析未启用（.env 未配置密钥），仅本地规则";
+  llm.className = "badge " + (config.llm ? "on" : "off");
+  for (const sel of [$("#fw"), $("#fwSel")]) sel.innerHTML = config.frameworks.map(f => `<option>${esc(f)}</option>`).join("");
+  for (const snap of await api("/api/rooms")) upsert(snap);
+  current = Object.keys(rooms).at(-1) || null;
+  render();
+  connect();
+}
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage = e => onEvent(JSON.parse(e.data));
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+
+function onEvent({room, type, data}) {
+  if (type === "status") { upsert(data); renderTabs(); if (room === current) render(); return; }
+  const r = rooms[room]; if (!r) return;
+  switch (type) {
+    case "clock": r.snap.audio_sec = data.audio_sec; if (room === current) { const c = $("#clock"); if (c) c.textContent = fmt(data.audio_sec); } return;
+    case "segment": r.segments.push(data); if (r.segments.length > 400) r.segments.shift(); if (room === current) appendSeg(data); return;
+    case "alert": r.alerts.push(data); if (room !== current) r.unread++; if (data.severity === "high") toast(r, data);
+      renderTabs(); if (room === current) prependAlert(data, true); return;
+    case "alert_update": { const a = r.alerts.find(x => x.id === data.id); if (a) Object.assign(a, data);
+      if (room === current) { const el = document.getElementById("a-" + data.id); if (el) el.outerHTML = alertHtml(a); } return; }
+    case "metrics": r.minute.push({t: data.t, ...data.minute}); r.window = data.window; if (room === current) { renderKpis(r); renderChart(r); } return;
+    case "analysis": r.analysis = data; r.llmError = null; if (room === current) { renderAnalysis(r); renderScore(r); } return;
+    case "error": // 同一错误每分钟都会重复出现，只弹一次窗，持续显示在 AI 面板里
+      if (r.llmError !== data.message) toast(r, {title: data.message, severity: "high"});
+      r.llmError = data.message; if (room === current) renderAnalysis(r); return;
+  }
+}
+
+// ---------- 渲染 ----------
+function renderTabs() {
+  $("#tabs").innerHTML = Object.values(rooms).map(r => {
+    const s = r.snap, name = s.info?.anchor || s.info?.title || s.target;
+    return `<div class="tab ${s.id === current ? "active" : ""}" data-id="${s.id}">
+      <span class="dot ${s.status}"></span>${esc(name)} <span class="muted" style="font-size:12px">${STATUS[s.status] || s.status}</span>
+      ${r.unread ? `<span class="count">${r.unread}</span>` : ""}</div>`;
+  }).join("") || `<span class="muted" style="padding:5px 0">还没有盯播任务</span>`;
+}
+
+function render() {
+  renderTabs();
+  const r = rooms[current];
+  if (!r) {
+    $("#main").innerHTML = `<div class="empty"><h2>添加一个直播间开始盯播</h2>
+      <p>粘贴抖音直播间链接，系统会实时识别主播讲解内容，计算语速和节奏，检测违禁词，并每隔一段时间用大模型对照话术框架分析最近几分钟的讲解。</p>
+      <p>直播间没开播时，可以填本地录音文件路径回放，例如 <code>samples/295178185857_20261022_135720.wav</code>，配合“倍速”加快演示。</p></div>`;
+    return;
+  }
+  r.unread = 0;
+  const s = r.snap, info = s.info || {};
+  $("#main").innerHTML = `
+    <div class="roomhead">
+      <div class="who"><b>${esc(info.anchor || info.title || s.target)}</b> <span class="badge">${STATUS[s.status] || s.status}</span>
+        <div>${esc(info.title || "")} ${info.online ? "· 在线 " + esc(info.online) : ""} · 框架 ${esc(s.framework)} · 每 ${s.interval_sec}s 分析近 ${s.window_min} 分钟${s.speed > 1 ? " · " + s.speed + "× 回放" : ""}
+        ${info.error ? `<span style="color:var(--high)"> · ${esc(info.error)}</span>` : ""}</div></div>
+      <div class="clock" id="clock" title="已盯播时长（音频时间）">${fmt(s.audio_sec)}</div>
+      <div class="score" id="score"></div>
+      <button id="report">复盘报告</button>
+      ${["running", "starting"].includes(s.status) ? `<button class="danger" id="stop">停止</button>` : `<button class="danger" id="remove">移除</button>`}
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid">
+      <div class="panel"><h3>实时转写 <span class="hint">SenseVoice 本地识别 · 红色为违禁词</span></h3><div class="scroll" id="segs"></div></div>
+      <div class="panel"><h3>告警 <span class="filters" id="filters">
+        ${["all:全部", "high:高", "rule:违禁词", "metric:表达", "llm:AI"].map(x => { const [k, v] = x.split(":"); return `<button data-f="${k}" class="${alertFilter === k ? "on" : ""}">${v}</button>`; }).join("")}
+        </span></h3><div class="scroll" id="alerts"></div></div>
+      <div class="panel"><h3>AI 话术分析 <span class="hint" id="anaMeta"></span></h3>
+        <div class="summary" id="summary"></div><div class="stages" id="stages"></div>
+        <div class="chart" id="chart"></div></div>
+    </div>`;
+  const segBox = $("#segs");
+  segBox.innerHTML = r.segments.map(segHtml).join("");
+  segBox.scrollTop = segBox.scrollHeight;
+  renderAlerts(r); renderKpis(r); renderAnalysis(r); renderChart(r); renderScore(r);
+}
+
+function segHtml(s) {
+  let text = esc(s.text);
+  for (const w of s.hits || []) text = text.split(esc(w)).join(`<mark>${esc(w)}</mark>`);
+  const tags = [s.emotion && s.emotion !== "NEUTRAL" && s.emotion !== "EMO_UNKNOWN" ? s.emotion : "", s.event && s.event !== "Speech" ? s.event : ""].filter(Boolean);
+  return `<div class="seg"><span class="t">${fmt(s.start)}</span>${tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")}${text}</div>`;
+}
+function appendSeg(s) {
+  const box = $("#segs"); if (!box) return;
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  box.insertAdjacentHTML("beforeend", segHtml(s));
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+function passFilter(a) { return alertFilter === "all" || (alertFilter === "high" ? a.severity === "high" : a.source === alertFilter); }
+function alertHtml(a, fresh) {
+  return `<div class="alert ${a.severity} ${fresh ? "fresh" : ""}" id="a-${a.id}">
+    <div class="top"><span class="title">${esc(a.title)}</span>${a.count > 1 ? `<span class="x">×${a.count}</span>` : ""}<span class="src">${SRC[a.source] || a.source}</span>${a.ai_confirmed ? `<span class="src" style="color:var(--ok);border-color:var(--ok)" title="AI 语义分析也判定为问题">AI 确认</span>` : ""}</div>
+    <div class="meta">${fmt(a.t)}${a.count > 1 ? " ~ " + fmt(a.last_t) : ""}</div>
+    ${a.detail ? `<div class="detail">${esc(a.detail)}</div>` : ""}
+    ${a.quote ? `<div class="quote">“${esc(a.quote.length > 90 ? a.quote.slice(0, 90) + "…" : a.quote)}”</div>` : ""}
+    ${a.suggestion ? `<div class="tip">提示主播：${esc(a.suggestion)}</div>` : ""}</div>`;
+}
+function renderAlerts(r) {
+  const list = r.alerts.filter(passFilter).slice().reverse();
+  $("#alerts").innerHTML = list.map(a => alertHtml(a)).join("") || `<div class="muted">暂无告警</div>`;
+}
+function prependAlert(a, fresh) {
+  const box = $("#alerts"); if (!box || !passFilter(a)) return;
+  if (!box.querySelector(".alert")) box.innerHTML = "";
+  box.insertAdjacentHTML("afterbegin", alertHtml(a, fresh));
+}
+
+function renderKpis(r) {
+  const box = $("#kpis"); if (!box) return;
+  const m = r.minute.at(-1), t = r.snap.thresholds || {};
+  const th = {fast: t.rate_fast ?? 380, slow: t.rate_slow ?? 160, gap: t.silence_gap ?? 8, talk: t.talk_ratio_min ?? 0.5, filler: t.filler_per_100 ?? 4};
+  const v = (x, d = "—") => m ? x : d;
+  const rateCls = !m ? "" : m.rate_cpm > th.fast ? "bad" : (m.rate_cpm && m.rate_cpm < th.slow ? "warn" : "");
+  const emo = m ? Object.entries(m.emotions || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k}×${n}`).join(" ") : "";
+  box.innerHTML = `
+    <div class="kpi ${rateCls}"><div class="label">语速（近一周期）</div><div class="val">${v(m?.rate_cpm)}<small>字/分</small></div><div class="sub">建议 ${th.slow}–${th.fast}${r.window ? " · 窗口均值 " + r.window.rate_cpm : ""}</div></div>
+    <div class="kpi ${m && m.talk_ratio < th.talk ? "warn" : ""}"><div class="label">讲话占比</div><div class="val">${v(Math.round((m?.talk_ratio || 0) * 100))}<small>%</small></div><div class="sub">低于 ${th.talk * 100}% 提示冷场多</div></div>
+    <div class="kpi ${m && m.max_gap > th.gap ? "bad" : ""}"><div class="label">最长冷场</div><div class="val">${v(m?.max_gap)}<small>秒</small></div><div class="sub">超过 ${th.gap} 秒告警</div></div>
+    <div class="kpi ${m && m.filler_per_100 > th.filler ? "warn" : ""}"><div class="label">口头禅</div><div class="val">${v(m?.filler_per_100)}<small>次/百字</small></div><div class="sub">${m ? esc(Object.keys(m.fillers || {}).slice(0, 3).join("、") || "无") : "—"}</div></div>
+    <div class="kpi"><div class="label">情绪（SenseVoice）</div><div class="val" style="font-size:15px;padding-top:8px">${esc(emo || "—")}</div><div class="sub">重复度 ${v(m?.repeat_ratio)}</div></div>`;
+}
+
+function renderScore(r) {
+  const el = $("#score"); if (!el) return;
+  const sc = r.analysis?.score;
+  const color = sc == null ? "var(--muted)" : sc >= 80 ? "var(--ok)" : sc >= 60 ? "var(--medium)" : "var(--high)";
+  el.innerHTML = `<span style="color:${color}">${sc ?? "—"}</span><small>话术评分</small>`;
+}
+
+function renderAnalysis(r) {
+  const a = r.analysis, snap = r.snap;
+  if (!$("#summary")) return;
+  if (!snap.llm) { $("#summary").innerHTML = `<span class="muted">未配置大模型密钥，仅运行本地规则。复制 .env.example 为 .env 并填写 LLM_API_KEY 后重启即可启用。</span>`; $("#stages").innerHTML = ""; return; }
+  if (r.llmError) { $("#summary").innerHTML = `<span style="color:var(--high)">AI 分析失败：${esc(r.llmError)}</span><div class="muted" style="font-size:12px">本地规则（违禁词、语速、冷场）不受影响，继续运行。</div>`; if (!a) { $("#stages").innerHTML = ""; return; } }
+  if (!a) { $("#summary").innerHTML = `<span class="muted">首次分析将在 ${snap.interval_sec} 秒（音频时间）后进行…</span>`; $("#stages").innerHTML = ""; return; }
+  $("#anaMeta").textContent = `${fmt(a.window[0])}–${fmt(a.window[1])} · ${a._meta?.latency ?? "?"}s`;
+  $("#summary").textContent = a.summary || "";
+  $("#stages").innerHTML = (a.stage_coverage || []).map(s => `
+    <div class="stage ${s.covered ? "yes" : "no"} ${s.id === a.current_stage ? "cur" : ""}">
+      <span class="ck">${s.covered ? "✓" : "✗"}</span><span><b>${esc(stageName(s.id))}</b> <span class="note">${esc(s.note || "")}</span></span></div>`).join("");
+}
+const STAGE_NAMES = {hook: "开场留人", product: "产品介绍", selling_point: "核心卖点", trust: "信任背书", price: "价格与福利", urgency: "促单逼单", after_sale: "售后保障", interaction: "互动"};
+const stageName = id => STAGE_NAMES[id] || id;
+
+function renderChart(r) {
+  const box = $("#chart"); if (!box) return;
+  const pts = r.minute.map(m => ({t: m.t, v: m.rate_cpm}));
+  const W = 320, H = 120, P = 22, fast = r.snap.thresholds?.rate_fast ?? 380, slow = r.snap.thresholds?.rate_slow ?? 160;
+  if (pts.length < 1) { box.innerHTML = `<div class="cap"><span>语速趋势</span></div><div class="muted" style="font-size:12px;padding:20px 0">等待第一个分析周期…</div>`; return; }
+  const maxV = Math.max(fast + 60, ...pts.map(p => p.v)), t0 = pts[0].t, t1 = Math.max(pts.at(-1).t, t0 + 1);
+  const x = t => P + (pts.length === 1 ? (W - 2 * P) / 2 : (t - t0) / (t1 - t0) * (W - 2 * P));
+  const y = v => H - P + 4 - v / maxV * (H - P - 8);
+  const path = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+  box.innerHTML = `<div class="cap"><span>语速趋势（字/分）</span><span>${pts.length} 个周期</span></div>
+    <svg viewBox="0 0 ${W} ${H}" width="100%">
+      <rect x="${P}" y="${y(fast)}" width="${W - 2 * P}" height="${y(slow) - y(fast)}" fill="var(--ok)" opacity=".08"/>
+      <line x1="${P}" x2="${W - P}" y1="${y(fast)}" y2="${y(fast)}" stroke="var(--high)" stroke-dasharray="3 3" opacity=".6"/>
+      <text x="${W - P + 2}" y="${y(fast) + 3}">${fast}</text>
+      <line x1="${P}" x2="${W - P}" y1="${y(slow)}" y2="${y(slow)}" stroke="var(--medium)" stroke-dasharray="3 3" opacity=".6"/>
+      <text x="${W - P + 2}" y="${y(slow) + 3}">${slow}</text>
+      <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      ${pts.map(p => `<circle cx="${x(p.t)}" cy="${y(p.v)}" r="3" fill="${p.v > fast ? "var(--high)" : "var(--accent)"}"><title>${fmt(p.t)} ${p.v} 字/分</title></circle>`).join("")}
+      <text x="${P}" y="${H - 4}">${fmt(t0)}</text><text x="${W - P}" y="${H - 4}" text-anchor="end">${fmt(t1)}</text>
+    </svg>`;
+}
+
+function toast(r, a) {
+  const el = document.createElement("div");
+  el.innerHTML = `<b style="color:var(--high)">${esc(r.snap.info?.anchor || "")}</b> ${esc(a.title)}${a.suggestion ? `<div class="muted" style="font-size:12px">${esc(a.suggestion)}</div>` : ""}`;
+  $("#toast").appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+
+async function showReport() {
+  const rep = await api(`/api/rooms/${current}/report`), o = rep.overall;
+  const card = (label, val, sub = "") => `<div class="kpi"><div class="label">${label}</div><div class="val">${val}</div><div class="sub">${sub}</div></div>`;
+  $("#repBody").innerHTML = `
+    <div class="stats">
+      ${card("盯播时长", fmt(rep.duration))}
+      ${card("平均语速", o.rate_cpm + "<small>字/分</small>", "讲话占比 " + Math.round(o.talk_ratio * 100) + "%")}
+      ${card("告警总数", rep.alert_total, Object.entries(rep.alert_by_source).map(([k, v]) => `${SRC[k] || k} ${v}`).join(" · "))}
+      ${card("平均话术评分", rep.score_avg ?? "—", rep.score_trend.length + " 次 AI 分析")}
+    </div>
+    <h3 style="font-size:14px">重点问题</h3>
+    ${rep.top_alerts.map(a => alertHtml(a)).join("") || `<div class="muted">本场没有告警</div>`}`;
+  $("#repModal").classList.add("show");
+}
+
+// ---------- 交互 ----------
+$("#add").onclick = async () => {
+  try {
+    const snap = await api("/api/rooms", {method: "POST", body: JSON.stringify({
+      target: $("#target").value, framework: $("#fw").value,
+      window_min: +$("#win").value, interval_sec: +$("#intv").value, speed: +$("#speed").value})});
+    // WebSocket 的状态事件可能比 POST 响应先到，已存在时不要用旧快照覆盖
+    if (!rooms[snap.id]) upsert(snap);
+    current = snap.id; $("#target").value = ""; render();
+  } catch (e) { alert(e.message); }
+};
+$("#target").addEventListener("keydown", e => { if (e.key === "Enter") $("#add").click(); });
+$("#tabs").onclick = e => { const t = e.target.closest(".tab"); if (t) { current = t.dataset.id; render(); } };
+$("#main").onclick = async e => {
+  const id = e.target.id;
+  if (id === "stop") await api(`/api/rooms/${current}/stop`, {method: "POST"});
+  if (id === "remove") { await api(`/api/rooms/${current}`, {method: "DELETE"}); delete rooms[current]; current = Object.keys(rooms).at(-1) || null; render(); }
+  if (id === "report") showReport();
+  const f = e.target.closest("[data-f]"); if (f) { alertFilter = f.dataset.f; render(); }
+};
+async function loadFw() { $("#fwText").value = await api(`/api/frameworks/${$("#fwSel").value}`); $("#fwMsg").textContent = "修改后对新开的盯播任务生效"; }
+$("#editfw").onclick = async () => { $("#fwSel").value = $("#fw").value; await loadFw(); $("#fwModal").classList.add("show"); };
+$("#fwSel").onchange = loadFw;
+$("#fwSave").onclick = async () => {
+  try { await api(`/api/frameworks/${$("#fwSel").value}`, {method: "PUT", body: JSON.stringify({text: $("#fwText").value})}); $("#fwMsg").textContent = "已保存 ✓ 新开的盯播任务生效"; }
+  catch (e) { $("#fwMsg").textContent = e.message; }
+};
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => b.closest(".modal").classList.remove("show"));
+init();
+</script>
+</body>
+</html>
