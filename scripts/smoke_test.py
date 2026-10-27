@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import locale
+import os
 import platform
 import shutil
 import sys
@@ -39,8 +40,10 @@ def check(cond: bool, msg: str) -> None:
 
 def main() -> None:
     src = Path(sys.argv[1] if len(sys.argv) > 1 else "samples/demo.wav")
-    print(f"系统 {platform.platform()} | Python {platform.python_version()} | 默认编码 {locale.getpreferredencoding(False)}")
-    print(f"ffmpeg: {find_ffmpeg()}")
+    env = f"{platform.platform()} | Python {platform.python_version()} | 默认编码 {locale.getpreferredencoding(False)}"
+    ffmpeg = find_ffmpeg()
+    print(f"系统 {env}")
+    print(f"ffmpeg: {ffmpeg}")
 
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp) / "盯播 测试"
@@ -79,6 +82,13 @@ def main() -> None:
         check(clip[:4] == b"RIFF" and len(clip) > 60000, f"回听切片 {len(clip)} 字节")
 
     print("全部通过")
+    # GitHub Actions 的日志要登录才能看，注释（annotation）公开可见：把关键结果写成注释，方便核对
+    if os.environ.get("GITHUB_ACTIONS"):
+        which = "内置 imageio-ffmpeg" if "imageio_ffmpeg" in ffmpeg else "系统 PATH"
+        print(f"::notice title=冒烟测试通过 ({platform.system()})::{env} | ffmpeg 来自{which} | "
+              f"回放 {s.audio_sec:.0f} 秒，转写 {len(s.segments)} 句，首句「{s.segments[0].text[:15]}」 | "
+              f"语速 {[m['rate_cpm'] for m in s.minute_metrics]} | 在线人数 {[m.get('viewers') for m in s.minute_metrics]} | "
+              f"中文路径：{wav.parent.name}/{wav.name}")
 
 
 if __name__ == "__main__":
