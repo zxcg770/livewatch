@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/zxcg770/livewatch/actions/workflows/ci.yml/badge.svg)](https://github.com/zxcg770/livewatch/actions/workflows/ci.yml)
 
+![盯播界面：实时转写、告警（可回听）、AI 话术分析、语速与在线人数曲线](docs/img/ui.jpg)
+
 实时识别主播讲解内容，及时发现直播中的问题：**语速 / 节奏 / 冷场**（本地实时计算）、**违禁词**（秒级告警）、**话术缺失与合规风险**（大模型每分钟对照话术框架分析最近 5 分钟）。
 
 跨平台桌面应用（macOS / Windows），Python 后端 + Web 界面 + pywebview 原生窗口。Windows 上 pywebview 使用系统自带的 Edge WebView2（Win10/11 一般已预装）；macOS 已实测；Windows 每次提交都会在 GitHub Actions 的 Windows Server 2025 上自动跑单元测试和回放冒烟测试（默认编码 cp1252、内置 ffmpeg、中文路径），桌面窗口尚未在 Windows 上实测。
