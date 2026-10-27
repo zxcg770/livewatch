@@ -73,6 +73,8 @@ main{flex:1;min-height:0;padding:12px 16px;display:flex;flex-direction:column;ga
 .alert .top{display:flex;gap:6px;align-items:center}
 .alert .title{font-weight:600;flex:1}
 .alert .src{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+.alert .play{font-size:11px;padding:0 7px;border-radius:4px;line-height:18px}
+.alert .play.on{border-color:var(--accent);color:var(--accent)}
 .alert .x{font-size:11px;background:var(--line);border-radius:99px;padding:0 6px}
 .alert .meta{font-size:11px;color:var(--muted);font-family:var(--mono)}
 .alert .detail{font-size:13px;color:#c9ced8;margin-top:2px}
@@ -144,6 +146,8 @@ let config = {frameworks: []};
 const rooms = {};       // id -> state
 let current = null;
 let alertFilter = "all";
+let playing = null;     // 正在回听的告警 id
+const player = new Audio();
 
 // ---------- 数据 ----------
 function upsert(snap) {
@@ -262,7 +266,7 @@ function appendSeg(s) {
 function passFilter(a) { return alertFilter === "all" || (alertFilter === "high" ? a.severity === "high" : a.source === alertFilter); }
 function alertHtml(a, fresh) {
   return `<div class="alert ${a.severity} ${fresh ? "fresh" : ""}" id="a-${a.id}">
-    <div class="top"><span class="title">${esc(a.title)}</span>${a.count > 1 ? `<span class="x">×${a.count}</span>` : ""}<span class="src">${SRC[a.source] || a.source}</span>${a.ai_confirmed ? `<span class="src" style="color:var(--ok);border-color:var(--ok)" title="AI 语义分析也判定为问题">AI 确认</span>` : ""}</div>
+    <div class="top"><span class="title">${esc(a.title)}</span>${a.count > 1 ? `<span class="x">×${a.count}</span>` : ""}<span class="src">${SRC[a.source] || a.source}</span>${a.ai_confirmed ? `<span class="src" style="color:var(--ok);border-color:var(--ok)" title="AI 语义分析也判定为问题">AI 确认</span>` : ""}${a.clip ? `<button class="play ${playing === a.id ? "on" : ""}" data-play="${a.id}" title="回听原声 ${fmt(a.clip[0])}–${fmt(a.clip[1])}">${playing === a.id ? "■ 停止" : "▶ 回听"}</button>` : ""}</div>
     <div class="meta">${fmt(a.t)}${a.count > 1 ? " ~ " + fmt(a.last_t) : ""}</div>
     ${a.detail ? `<div class="detail">${esc(a.detail)}</div>` : ""}
     ${a.quote ? `<div class="quote">“${esc(a.quote.length > 90 ? a.quote.slice(0, 90) + "…" : a.quote)}”</div>` : ""}
@@ -415,6 +419,22 @@ $("#fwSave").onclick = async () => {
   try { await api(`/api/frameworks/${$("#fwSel").value}`, {method: "PUT", body: JSON.stringify({text: $("#fwText").value})}); $("#fwMsg").textContent = "已保存 ✓ 新开的盯播任务生效"; }
   catch (e) { $("#fwMsg").textContent = e.message; }
 };
+// 告警回听：告警栏和复盘报告里的卡片共用一个播放器，点同一条再点一次停止
+function setPlaying(id) {
+  const prev = playing; playing = id;
+  for (const pid of [prev, id]) if (pid) document.querySelectorAll(`[data-play="${pid}"]`).forEach(b => {
+    b.classList.toggle("on", pid === id); b.textContent = pid === id ? "■ 停止" : "▶ 回听";
+  });
+}
+player.onended = player.onerror = () => setPlaying(null);
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-play]"); if (!b) return;
+  const id = b.dataset.play, a = rooms[current]?.alerts.find(x => x.id === id);
+  if (!a?.clip) return;
+  if (playing === id) { player.pause(); setPlaying(null); return; }
+  player.src = `/api/rooms/${current}/audio?start=${a.clip[0]}&end=${a.clip[1]}`;
+  player.play().then(() => setPlaying(id), () => setPlaying(null));
+});
 document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => b.closest(".modal").classList.remove("show"));
 init();
 </script>

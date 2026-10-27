@@ -7,11 +7,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import threading
 import time
 import uuid
+import wave
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -20,7 +22,7 @@ from pathlib import Path
 from . import metrics as metrics_mod
 from .analyzer import LLMAnalyzer
 from .asr import Segment, SenseVoiceASR
-from .audio import BYTES_PER_SEC, AudioStream
+from .audio import BYTES_PER_SEC, CHANNELS, SAMPLE_RATE, SAMPLE_WIDTH, AudioStream
 from .framework import load_framework
 from .rules import BannedWordChecker, apply_corrections
 from .sources import FileSource, get_source
@@ -29,6 +31,7 @@ log = logging.getLogger(__name__)
 SESSIONS_DIR = Path(__file__).resolve().parent.parent / "sessions"
 
 Emit = Callable[[str, str, dict], None]
+CLIP_MAX = 30  # 单条告警回听最长秒数
 
 
 def _bigrams(text: str) -> set[str]:
@@ -52,6 +55,46 @@ def _viewer_stats(minute_metrics: list[dict]) -> dict | None:
     if not vs:
         return None
     return {"peak": max(vs), "low": min(vs), "avg": round(sum(vs) / len(vs)), "last": vs[-1]}
+
+
+def _clip(start: float, end: float) -> list[float]:
+    start = max(0.0, start)
+    return [round(start, 1), round(min(end, start + CLIP_MAX), 1)]
+
+
+def _locate(quote: str, segs: list[Segment]) -> list[float] | None:
+    """在转写里找到 AI 引用的原文，估算它的音频时间段。
+
+    VAD 切出的一句常有 10～40 秒，按整句回听太长，所以按字定位：
+    把窗口内的转写拼起来，每个字按它在句子里的位置线性换算成时间；
+    再找引用的字符二元组命中最密集、长度不超过引用本身的一段。
+    AI 的引用可能跨句、也可能截半句，这样都能处理。命中不到 30%（AI 改写了原文）就不给回听。
+    """
+    qb = _bigrams(quote)
+    if not qb or not segs:
+        return None
+    chars: list[str] = []
+    times: list[float] = []
+    for seg in segs:
+        body = [c for c in seg.text if c.isalnum()]
+        for k, c in enumerate(body):
+            chars.append(c)
+            times.append(seg.start + seg.duration * (k + 0.5) / len(body))
+    hits = [i for i in range(len(chars) - 1) if chars[i] + chars[i + 1] in qb]
+    if not hits:
+        return None
+    span = sum(c.isalnum() for c in quote)
+    best, j = (0, 0), 0
+    for i in range(len(hits)):
+        while hits[i] - hits[j] > span:
+            j += 1
+        if i - j > best[1] - best[0]:
+            best = (j, i)
+    if (best[1] - best[0] + 1) / len(qb) < 0.3:
+        return None
+    start, end = times[hits[best[0]]], times[min(hits[best[1]] + 1, len(times) - 1)]
+    # 线性换算有几秒误差，前后各留 2 秒
+    return _clip(start - 2, end + 2)
 
 
 class RoomSession:
@@ -87,6 +130,7 @@ class RoomSession:
         self._pool = ThreadPoolExecutor(max_workers=1)
         self._analyzing = False
         self._source = None
+        self._audio_file = None
         self.dir = SESSIONS_DIR / f"{datetime.now():%Y%m%d_%H%M%S}_{self.id}"
 
     # ---------- 生命周期 ----------
@@ -145,8 +189,11 @@ class RoomSession:
             self._stream = AudioStream(source, self.target)
             next_tick = self.interval
             last_clock = 0.0
+            # 原始 PCM 落盘，按 音频秒数 × 每秒字节数 就能定位，告警回听时按需切片
+            self._audio_file = (self.dir / "audio.pcm").open("ab")
 
             for chunk in self._stream:
+                self._audio_file.write(chunk)
                 self.audio_sec += len(chunk) / BYTES_PER_SEC
                 for seg in asr.accept_pcm(chunk):
                     self._on_segment(seg, checker)
@@ -156,6 +203,7 @@ class RoomSession:
                 now = time.monotonic()
                 if now - last_clock > 0.5:
                     last_clock = now
+                    self._audio_file.flush()
                     self.emit("clock", {"audio_sec": round(self.audio_sec, 1)})
 
             for seg in asr.flush():
@@ -169,6 +217,9 @@ class RoomSession:
             log.exception("会话异常")
             self.status = "error"
             self.info["error"] = str(e)
+        finally:
+            if self._audio_file:
+                self._audio_file.close()
         self.emit("status", self.snapshot())
 
     def _on_segment(self, seg: Segment, checker: BannedWordChecker) -> None:
@@ -183,6 +234,8 @@ class RoomSession:
                 "code": f"ban:{h.word}", "source": "rule", "severity": h.severity,
                 "title": f"违禁词「{h.word}」", "detail": f"{h.category}：{h.reason}",
                 "quote": seg.text, "suggestion": f"避免使用「{h.word}」，换成有依据的客观描述",
+                # 一句可能长达几十秒，定位到违禁词附近；定位不到就听整句
+                "clip": _locate(h.word, [seg]) or _clip(seg.start, seg.end),
             }, seg.end)
 
     # ---------- 定时分析（分析线程） ----------
@@ -208,7 +261,11 @@ class RoomSession:
             self._save("metrics.jsonl", {"t": t_end, "minute": m_min, "window": m_win})
             self.emit("metrics", {"t": round(t_end, 1), "minute": m_min, "window": m_win})
             for f in m_min["flags"]:
-                self._raise_alert({**f, "source": "metric", "quote": ""}, t_end)
+                if f["code"] == "expr:silence":  # 回听冷场前后
+                    clip = _clip(m_min["max_gap_at"] - 3, m_min["max_gap_at"] + m_min["max_gap"] + 3)
+                else:  # 语速、口头禅等是整段的状态，听最后 20 秒即可
+                    clip = _clip(t_end - 20, t_end)
+                self._raise_alert({**f, "source": "metric", "quote": "", "clip": clip}, t_end)
 
             if not self.analyzer.enabled:
                 return
@@ -221,7 +278,7 @@ class RoomSession:
             self._save("analyses.jsonl", result)
             self.emit("analysis", result)
             for issue in result.get("issues", []):
-                self._raise_alert({**issue, "source": "llm"}, t_end)
+                self._raise_alert({**issue, "source": "llm", "clip": _locate(issue.get("quote", ""), window_segs)}, t_end)
         except Exception as e:  # noqa: BLE001
             log.exception("分析失败")
             self.emit("error", {"message": str(e), "t": round(t_end, 1)})
@@ -282,6 +339,28 @@ class RoomSession:
     def _recent(self, t: float) -> list[dict]:
         """一个分析窗口内仍活跃的告警，新的在前。"""
         return [a for a in reversed(self.alerts) if t - a["last_t"] < self.window]
+
+    # ---------- 告警回听 ----------
+    def audio_clip(self, start: float, end: float) -> bytes:
+        """从落盘的 PCM 里切出一段，包成 WAV 返回。"""
+        path = self.dir / "audio.pcm"
+        if not path.exists():
+            raise FileNotFoundError("本场没有保存音频")
+        start = max(0.0, start)
+        end = min(end, start + CLIP_MAX)
+        # 按采样对齐（16bit = 2 字节），否则会切出噪音
+        offset = int(start * BYTES_PER_SEC) // 2 * 2
+        length = int((end - start) * BYTES_PER_SEC) // 2 * 2
+        with path.open("rb") as f:
+            f.seek(offset)
+            pcm = f.read(length)
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(CHANNELS)
+            w.setsampwidth(SAMPLE_WIDTH)
+            w.setframerate(SAMPLE_RATE)
+            w.writeframes(pcm)
+        return buf.getvalue()
 
     # ---------- 场次报告 ----------
     def report(self) -> dict:

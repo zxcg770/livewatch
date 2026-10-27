@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from pydantic import BaseModel
 
 from .analyzer import LLMAnalyzer
@@ -97,6 +97,15 @@ def remove_room(room_id: str) -> dict:
 @app.get("/api/rooms/{room_id}/report")
 def report(room_id: str) -> dict:
     return (rooms.get(room_id) or _404()).report()
+
+
+@app.get("/api/rooms/{room_id}/audio")
+def audio(room_id: str, start: float, end: float) -> Response:
+    room = rooms.get(room_id) or _404()
+    try:
+        return Response(room.audio_clip(start, end), media_type="audio/wav")
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
 
 
 @app.get("/api/frameworks/{name}", response_class=PlainTextResponse)

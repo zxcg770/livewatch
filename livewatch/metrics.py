@@ -35,6 +35,8 @@ def compute(segments: list[Segment], start: float, end: float, thresholds: dict,
     gaps = [edges[i + 1] - edges[i] for i in range(0, len(edges) - 1, 2)]
     tail = gaps.pop() if open_tail and gaps else 0.0
     max_gap = max(gaps) if gaps else (0.0 if open_tail else span)
+    # 最长冷场从哪一秒开始，用于告警回听
+    max_gap_at = edges[2 * gaps.index(max_gap)] if gaps else start
     speech = rate_speech + tail
 
     fillers = {w: text.count(w) for w in FILLERS if text.count(w)}
@@ -55,6 +57,7 @@ def compute(segments: list[Segment], start: float, end: float, thresholds: dict,
         "talk_ratio": round(speech / span, 2),
         "rate_cpm": round(chars / rate_speech * 60) if rate_speech > 1 else 0,
         "max_gap": round(max_gap, 1),
+        "max_gap_at": round(max_gap_at, 1),
         "fillers": fillers,
         "filler_per_100": round(filler_total / chars * 100, 1) if chars else 0,
         "repeat_ratio": round(repeated / max(len(grams), 1), 2),
