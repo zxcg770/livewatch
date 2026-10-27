@@ -9,3 +9,5 @@ sessions/
 .DS_Store
 samples/*.log
 samples/*.viewers.jsonl
+!samples/demo.wav
+!samples/demo.viewers.jsonl

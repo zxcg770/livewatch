@@ -1,0 +1,40 @@
+# 在 Windows 和 macOS 上各跑一遍：单元测试 + 下载模型 + 回放冒烟测试。
+# 开发机只有 Mac，Windows 兼容性靠这里在真实的 Windows 机器上验证。
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: uv sync
+
+      - name: 单元测试
+        run: uv run pytest -v
+
+      - name: 缓存识别模型
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: models-sensevoice-int8-2024-07-17
+
+      - name: 下载识别模型
+        run: uv run scripts/download_models.py
+
+      - name: 回放冒烟测试（不调 AI）
+        run: uv run scripts/smoke_test.py samples/demo.wav

@@ -1,4 +1,6 @@
-# LiveWatch · AI 盯播工具
+# LiveWatch
+
+[![CI](https://github.com/zxcg770/livewatch/actions/workflows/ci.yml/badge.svg)](https://github.com/zxcg770/livewatch/actions/workflows/ci.yml) · AI 盯播工具
 
 实时识别主播讲解内容，及时发现直播中的问题：**语速 / 节奏 / 冷场**（本地实时计算）、**违禁词**（秒级告警）、**话术缺失与合规风险**（大模型每分钟对照话术框架分析最近 5 分钟）。
 
@@ -39,12 +41,13 @@ uv run app.py
 uv run app.py --browser
 ```
 
-演示建议：直播间没开播时，输入框填 `samples/xxx.wav`，倍速设为 10，窗口 5 分钟、每 60 秒分析。
+演示建议：直播间没开播时，输入框填 `samples/demo.wav`（仓库自带的 90 秒韩束直播录音，带在线人数记录），倍速设为 1～5；分析间隔可改成 30 秒，以便更快看到结果。
 
 ## 测试
 
 ```bash
 uv run pytest        # 30 个单元测试：指标计算、告警去重、引用定位、音频切片、违禁词、数据源等，不需要网络和模型
+uv run scripts/smoke_test.py samples/demo.wav   # 冒烟测试：不调 AI 回放一遍，检查整条链路（需要先下载模型）
 ```
 
 ## 命令行工具
