@@ -139,7 +139,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const fmt = sec => { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60;
   return (h ? h + ":" : "") + String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0"); };
-const SRC = {rule: "违禁词", metric: "表达", llm: "AI"};
+const SRC = {rule: "违禁词", metric: "表达", llm: "AI", viewers: "人数"};
 const STATUS = {starting: "连接中", running: "盯播中", stopping: "停止中", ended: "已结束", error: "出错"};
 
 let config = {frameworks: []};

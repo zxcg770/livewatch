@@ -93,3 +93,33 @@ def check(m: dict, t: dict) -> list[dict]:
                       "detail": f"每百字 {m['filler_per_100']} 次（{top}）",
                       "suggestion": "减少口头禅，用停顿代替"})
     return flags
+
+
+VIEWER_LOOKBACK = 180  # 秒：和最近 3 分钟的最高点比
+VIEWER_MIN_DROP = 20   # 人：小直播间人数本来就上下浮动，跌得太少不报
+
+
+def viewer_drop(history: list[dict], t: float, threshold: float) -> dict | None:
+    """在线人数短时间下跌检测。history 是每分钟指标（含 t 和 viewers），最后一项是当前。
+
+    比较对象是回看窗口内的最高点，而不是上一分钟：人数一分钟掉 5%、连掉三分钟，
+    逐分钟比较永远不报，和最高点比才能发现。
+    """
+    points = [(m["t"], m["viewers"]) for m in history if m.get("viewers") is not None]
+    if len(points) < 2 or points[-1][0] != t:
+        return None
+    now = points[-1][1]
+    earlier = [p for p in points[:-1] if t - p[0] <= VIEWER_LOOKBACK]
+    if not earlier:
+        return None
+    peak_t, peak = max(earlier, key=lambda p: p[1])
+    drop = (peak - now) / peak if peak else 0
+    if drop < threshold or peak - now < VIEWER_MIN_DROP:
+        return None
+    return {
+        "code": "viewers:drop", "severity": "high" if drop >= threshold * 2 else "medium",
+        "title": "在线人数下跌",
+        "detail": f"{round((t - peak_t) / 60)} 分钟内从 {peak} 降到 {now}（-{drop:.0%}）",
+        "suggestion": "马上抛福利或点名互动留人；回听下跌开始时在讲什么",
+        "peak_t": peak_t,
+    }

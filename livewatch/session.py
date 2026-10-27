@@ -259,6 +259,7 @@ class RoomSession:
             m_win = metrics_mod.compute(all_segs, t_start, t_end, th, open_tail)
             m_min["viewers"] = self._viewers(t_end)
             self.minute_metrics.append({"t": round(t_end, 1), **m_min})
+            drop = metrics_mod.viewer_drop(self.minute_metrics, round(t_end, 1), th["viewer_drop"])
             self._save("metrics.jsonl", {"t": t_end, "minute": m_min, "window": m_win})
             self.emit("metrics", {"t": round(t_end, 1), "minute": m_min, "window": m_win})
             for f in m_min["flags"]:
@@ -267,6 +268,12 @@ class RoomSession:
                 else:  # 语速、口头禅等是整段的状态，听最后 20 秒即可
                     clip = _clip(t_end - 20, t_end)
                 self._raise_alert({**f, "source": "metric", "quote": "", "clip": clip}, t_end)
+            if drop:
+                # 附上人数开始下跌时主播在讲什么，回听也从那里开始
+                peak_t = drop.pop("peak_t")
+                said = "".join(s.text for s in all_segs if s.end > peak_t and s.start < t_end)
+                self._raise_alert({**drop, "source": "viewers", "quote": said[:100] + ("…" if len(said) > 100 else ""),
+                                   "clip": _clip(peak_t, t_end)}, t_end)
 
             if not self.analyzer.enabled:
                 return

@@ -14,6 +14,7 @@ DEFAULT_THRESHOLDS = {
     "silence_gap": 8,
     "talk_ratio_min": 0.5,
     "filler_per_100": 4,
+    "viewer_drop": 0.15,
 }
 
 
