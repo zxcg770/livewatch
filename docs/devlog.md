@@ -428,3 +428,28 @@ URL 输入 → 实时转写 → 本地指标 / 违禁词 → 每分钟 LLM 分�
 ### 4. 代价与局限
 - 磁盘：每路直播每小时约 115MB（32KB/秒）。`sessions/` 不进 git，长期使用需要定期清理，或者以后改成压缩格式、只保留告警前后的片段。
 - 回听只在本场会话内有效（接口按内存里的会话查找）；服务重启后，历史场次的音频还在磁盘上，但界面里打不开。
+
+## D2（续四）· 跨平台：排查 Windows 上的三个隐患
+
+### 1. 背景
+题目要求 Mac 或 Windows，跨平台更好。开发和测试一直在 Mac 上，没有 Windows 机器，所以先通读代码，找出所有和平台相关的地方，逐个修掉，再在 Mac 上模拟 Windows 的条件来验证。
+
+### 2. 发现与修复
+1. **读写文件没有指定编码（真 bug，会崩溃）**
+   - 原因：Python 的 `read_text()`、`open()` 不指定编码时使用系统默认编码。Mac 默认 UTF-8，所以一直没暴露；中文 Windows 默认是 GBK。
+   - 后果：读含中文的话术框架 YAML 会乱码或报错；写转写和告警记录时，遇到 GBK 没有的字符会直接抛异常。
+   - 复现：在 Mac 上用 `LC_ALL=en_US.ISO8859-1` 把系统编码换成非 UTF-8，加载话术框架立刻报 `yaml.reader.ReaderError`。
+   - 修复：全部 12 处文件读写显式写上 `encoding="utf-8"`。
+2. **控制台输出编码（复现时顺带发现）**
+   - 用上面的方法验证时，测试脚本自己先崩了：往控制台打印中文报 `UnicodeEncodeError`。录音脚本的“✓ 已保存”“● 已录制”有同样问题，Windows 上输出被重定向（比如写日志文件）时会用 GBK，而“✓”不在 GBK 里。
+   - 修复：在 `livewatch/__init__.py` 里把 stdout、stderr 设成 UTF-8，无法编码的字符替换而不是崩溃。所有入口都会导入这个包，所以都能生效；模型下载脚本不导入这个包，就单独加了一份。
+3. **模型下载脚本是 bash**：Windows 用户不能直接运行。改写成 `scripts/download_models.py`，只用 httpx 和标准库的 tarfile，不依赖 curl、tar：
+   - 流式下载并显示进度，先写 `.part` 临时文件，下载完整后再改名，中断时不会留下半个文件；
+   - 解压用 `filter="data"`，拒绝压缩包里的绝对路径、`../` 和链接，防止文件写到 models/ 之外。Python 3.11.4 之前没有这个参数，所以先检测再使用；
+   - 旧的 `download_models.sh` 已删除，避免两份脚本不一致。
+4. **需要用户自己装 ffmpeg**：Windows 上装 ffmpeg 还要配 PATH，是最大的上手门槛。新增依赖 `imageio-ffmpeg`，它自带 Mac、Windows、Linux 的 ffmpeg 可执行文件（7.1 版，约 48MB）。查找顺序是系统 PATH 优先，找不到再用自带的，所以已经装了 ffmpeg 的用户不受影响。
+
+### 3. 验证（在 Mac 上模拟）
+- **下载脚本**：把模型从零下载到临时目录，解压后的文件清单和现有 `models/` 完全一致，VAD 模型逐字节相同。
+- **完整链路**：同时满足三个条件来模拟“新装的中文 Windows”：系统编码设为 ISO8859-1、PATH 里去掉系统 ffmpeg、关闭 AI。用 10 倍速回放 3 分钟样本，结果正常结束：自动用了内置的 ffmpeg 7.1，转写 11 句、告警 4 条，`meta.json` 和各个 jsonl 文件都能按 UTF-8 正常解码。
+- **没验证到的**：Windows 真机上的 pywebview 窗口（依赖 Edge WebView2）、sherpa-onnx 的 Windows 版本、路径里含中文或空格的情况。最可靠的办法是推送到 GitHub 后，用 GitHub Actions 的 Windows 机器跑一次冒烟测试。

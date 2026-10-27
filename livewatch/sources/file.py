@@ -41,7 +41,7 @@ class FileSource(StreamSource):
             vs: list[int] = []
             side = Path(target).with_suffix(".viewers.jsonl")
             if side.is_file():
-                for line in side.read_text().splitlines():
+                for line in side.read_text(encoding="utf-8").splitlines():
                     if line.strip():
                         row = json.loads(line)
                         ts.append(row["t"])

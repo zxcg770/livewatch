@@ -165,7 +165,7 @@ class RoomSession:
         self.emit_raw(self.id, type_, data)
 
     def _save(self, name: str, obj: dict) -> None:
-        with (self.dir / name).open("a") as f:
+        with (self.dir / name).open("a", encoding="utf-8") as f:
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
     # ---------- 主循环（音频线程） ----------
@@ -180,7 +180,8 @@ class RoomSession:
             self.dir.mkdir(parents=True, exist_ok=True)
             (self.dir / "meta.json").write_text(json.dumps(
                 {**self.info, "target": self.target, "framework": self.framework_name,
-                 "started_at": datetime.now().isoformat(timespec="seconds")}, ensure_ascii=False, indent=2))
+                 "started_at": datetime.now().isoformat(timespec="seconds")}, ensure_ascii=False, indent=2),
+                encoding="utf-8")
             self.status = "running"
             self.emit("status", self.snapshot())
 

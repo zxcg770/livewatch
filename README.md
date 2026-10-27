@@ -2,7 +2,7 @@
 
 实时识别主播讲解内容，及时发现直播中的问题：**语速 / 节奏 / 冷场**（本地实时计算）、**违禁词**（秒级告警）、**话术缺失与合规风险**（大模型每分钟对照话术框架分析最近 5 分钟）。
 
-跨平台桌面应用（macOS / Windows），Python 后端 + Web 界面 + pywebview 原生窗口。
+跨平台桌面应用（macOS / Windows），Python 后端 + Web 界面 + pywebview 原生窗口。Windows 上 pywebview 使用系统自带的 Edge WebView2（Win10/11 一般已预装）；macOS 已实测，Windows 只做了兼容性处理和模拟验证，尚未在真机上运行。
 
 ## 功能
 
@@ -20,14 +20,14 @@
 
 ## 快速开始
 
-依赖：Python ≥ 3.11、[uv](https://docs.astral.sh/uv/)、ffmpeg
+依赖：Python ≥ 3.11、[uv](https://docs.astral.sh/uv/)。ffmpeg 可选：系统里装了就用系统的，没有就自动用 `imageio-ffmpeg` 自带的版本，Windows 上不需要另外安装。
 
 ```bash
 # 1. 安装依赖
 uv sync
 
 # 2. 下载识别模型（SenseVoice int8 约 163MB + Silero VAD）
-bash scripts/download_models.sh
+uv run scripts/download_models.py   # Mac / Windows 通用
 
 # 3. 配置大模型（可选，不配置则只运行本地规则）
 cp .env.example .env   # 填入 LLM_API_KEY，默认 DeepSeek，兼容任意 OpenAI 接口

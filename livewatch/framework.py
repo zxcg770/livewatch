@@ -29,7 +29,7 @@ def framework_path(name: str) -> Path:
 
 
 def load_framework(name: str) -> dict:
-    data = yaml.safe_load(framework_path(name).read_text()) or {}
+    data = yaml.safe_load(framework_path(name).read_text(encoding="utf-8")) or {}
     data["thresholds"] = {**DEFAULT_THRESHOLDS, **(data.get("thresholds") or {})}
     data.setdefault("stages", [])
     data.setdefault("rules", [])
@@ -40,4 +40,4 @@ def load_framework(name: str) -> dict:
 
 def save_framework(name: str, text: str) -> None:
     yaml.safe_load(text)  # 先校验，格式错误直接抛出
-    framework_path(name).write_text(text)
+    framework_path(name).write_text(text, encoding="utf-8")

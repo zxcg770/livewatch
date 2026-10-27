@@ -113,7 +113,7 @@ def get_framework(name: str) -> str:
     path = framework_path(name)
     if not path.exists():
         _404()
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 class FrameworkBody(BaseModel):

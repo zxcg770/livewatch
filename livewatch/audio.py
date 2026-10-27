@@ -28,11 +28,22 @@ CHUNK_BYTES = BYTES_PER_SEC * CHUNK_MS // 1000
 log = logging.getLogger(__name__)
 
 
-def ffmpeg_cmd(info: StreamInfo) -> list[str]:
+def find_ffmpeg() -> str:
+    """优先用系统安装的 ffmpeg；没有就用 imageio-ffmpeg 自带的（Mac / Windows / Linux 都有），
+    这样 Windows 用户不用自己装 ffmpeg、配 PATH。"""
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise RuntimeError("未找到 ffmpeg，请先安装并加入 PATH")
-    cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin"]
+    if ffmpeg:
+        return ffmpeg
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError("未找到 ffmpeg：请安装 ffmpeg 并加入 PATH，或执行 uv sync 安装内置版本") from e
+
+
+def ffmpeg_cmd(info: StreamInfo) -> list[str]:
+    cmd = [find_ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostdin"]
     if info.input_url.startswith("http"):
         if info.headers:
             header_str = "".join(f"{k}: {v}\r\n" for k, v in info.headers.items())

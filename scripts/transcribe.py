@@ -46,7 +46,7 @@ def main() -> None:
     cost = time.perf_counter() - t0
     audio_sec = read / BYTES_PER_SEC
 
-    with out.open("w") as f:
+    with out.open("w", encoding="utf-8") as f:
         for s in segs:
             f.write(json.dumps(s.to_dict(), ensure_ascii=False) + "\n")
     chars = sum(len(s.text) for s in segs)

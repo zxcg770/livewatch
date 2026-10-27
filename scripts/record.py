@@ -51,7 +51,7 @@ def main() -> None:
 
     # 同步记录在线人数，回放时 FileSource 按音频时间读回来
     viewers_path = out.with_suffix(".viewers.jsonl")
-    viewers_path.write_text("")
+    viewers_path.write_text("", encoding="utf-8")
     done = threading.Event()
     written = 0
 
@@ -60,7 +60,7 @@ def main() -> None:
             try:
                 v = source.viewers(args.target, written / BYTES_PER_SEC)
                 if v is not None:
-                    with viewers_path.open("a") as f:
+                    with viewers_path.open("a", encoding="utf-8") as f:
                         f.write(json.dumps({"t": round(written / BYTES_PER_SEC, 1), "viewers": v}) + "\n")
             except Exception as e:  # noqa: BLE001
                 logging.warning("获取在线人数失败: %s", e)
@@ -97,7 +97,7 @@ def main() -> None:
         "duration_sec": round(duration, 1),
         "sample_rate": SAMPLE_RATE,
     }
-    out.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+    out.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n✓ 已保存 {out}（{duration:.1f}s）")
 
 

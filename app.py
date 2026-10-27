@@ -15,6 +15,8 @@ import webbrowser
 
 import uvicorn
 
+import livewatch  # noqa: F401  先导入：把控制台输出设成 UTF-8
+
 
 def free_port() -> int:
     with socket.socket() as s:
