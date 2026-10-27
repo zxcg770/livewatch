@@ -40,3 +40,7 @@ class StreamSource(ABC):
     @abstractmethod
     def resolve(self, target: str) -> StreamInfo:
         """解析出可拉流的地址。拉流地址带签名会过期，断流重连时需要重新调用。"""
+
+    def viewers(self, target: str, t: float) -> int | None:
+        """当前在线人数；t 是音频时间（秒），回放时用它对齐录制时的人数。拿不到返回 None。"""
+        return None

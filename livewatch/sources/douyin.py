@@ -53,8 +53,8 @@ class DouyinSource(StreamSource):
         if "ttwid" not in self._client.cookies:
             self._client.get("https://live.douyin.com/")
 
-    def resolve(self, target: str) -> StreamInfo:
-        rid = self.parse_room_id(target)
+    def _enter(self, rid: str) -> tuple[dict, dict]:
+        """调用进房接口，返回 (payload, room)。"""
         self._ensure_cookie()
         params = {
             "aid": "6383",
@@ -79,7 +79,11 @@ class DouyinSource(StreamSource):
         if not rooms:
             raise RuntimeError(f"接口未返回房间数据（可能被风控），room={rid}")
 
-        room = rooms[0]
+        return payload, rooms[0]
+
+    def resolve(self, target: str) -> StreamInfo:
+        rid = self.parse_room_id(target)
+        payload, room = self._enter(rid)
         anchor = (payload.get("user") or {}).get("nickname", "")
         is_live = room.get("status") == STATUS_LIVE
         if not is_live:
@@ -100,3 +104,9 @@ class DouyinSource(StreamSource):
             headers={"User-Agent": UA, "Referer": "https://live.douyin.com/"},
             extra={"online": room.get("user_count_str", "")},
         )
+
+    def viewers(self, target: str, t: float) -> int | None:
+        # room_view_stats.display_value 是精确整数；user_count_str 是"600+"这类展示文案
+        _, room = self._enter(self.parse_room_id(target))
+        value = (room.get("room_view_stats") or {}).get("display_value")
+        return value if isinstance(value, int) else None

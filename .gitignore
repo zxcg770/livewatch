@@ -8,3 +8,4 @@ sessions/
 *.pyc
 .DS_Store
 samples/*.log
+samples/*.viewers.jsonl

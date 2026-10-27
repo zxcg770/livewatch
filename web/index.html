@@ -7,7 +7,7 @@
 <style>
 :root{
   --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a; --text:#e6e8ec; --muted:#8b93a3;
-  --accent:#4f8cff; --high:#ff5d5d; --medium:#ffb347; --low:#7fb7ff; --ok:#3ecf8e;
+  --accent:#4f8cff; --high:#ff5d5d; --medium:#ffb347; --low:#7fb7ff; --ok:#3ecf8e; --viewers:#c08cff;
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 *{box-sizing:border-box}
@@ -98,7 +98,7 @@ svg text{fill:var(--muted);font-size:10px}
 .modal .box h2{margin:0;padding:12px 16px;font-size:16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
 .modal .body{padding:14px 16px;overflow:auto}
 textarea{width:100%;height:56vh;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font-family:var(--mono);font-size:12px;line-height:1.6}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px}
 .toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:20}
 .toast div{background:var(--panel2);border:1px solid var(--high);border-radius:8px;padding:8px 12px;max-width:360px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 </style>
@@ -188,7 +188,7 @@ function onEvent({room, type, data}) {
     case "clock": r.snap.audio_sec = data.audio_sec; if (room === current) { const c = $("#clock"); if (c) c.textContent = fmt(data.audio_sec); } return;
     case "segment": r.segments.push(data); if (r.segments.length > 400) r.segments.shift(); if (room === current) appendSeg(data); return;
     case "alert": r.alerts.push(data); if (room !== current) r.unread++; if (data.severity === "high") toast(r, data);
-      renderTabs(); if (room === current) prependAlert(data, true); return;
+      renderTabs(); if (room === current) { prependAlert(data, true); renderChart(r); } return;
     case "alert_update": { const a = r.alerts.find(x => x.id === data.id); if (a) Object.assign(a, data);
       if (room === current) { const el = document.getElementById("a-" + data.id); if (el) el.outerHTML = alertHtml(a); } return; }
     case "metrics": r.minute.push({t: data.t, ...data.minute}); r.window = data.window; if (room === current) { renderKpis(r); renderChart(r); } return;
@@ -317,23 +317,51 @@ const stageName = id => STAGE_NAMES[id] || id;
 
 function renderChart(r) {
   const box = $("#chart"); if (!box) return;
-  const pts = r.minute.map(m => ({t: m.t, v: m.rate_cpm}));
-  const W = 320, H = 120, P = 22, fast = r.snap.thresholds?.rate_fast ?? 380, slow = r.snap.thresholds?.rate_slow ?? 160;
-  if (pts.length < 1) { box.innerHTML = `<div class="cap"><span>语速趋势</span></div><div class="muted" style="font-size:12px;padding:20px 0">等待第一个分析周期…</div>`; return; }
-  const maxV = Math.max(fast + 60, ...pts.map(p => p.v)), t0 = pts[0].t, t1 = Math.max(pts.at(-1).t, t0 + 1);
-  const x = t => P + (pts.length === 1 ? (W - 2 * P) / 2 : (t - t0) / (t1 - t0) * (W - 2 * P));
-  const y = v => H - P + 4 - v / maxV * (H - P - 8);
-  const path = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
-  box.innerHTML = `<div class="cap"><span>语速趋势（字/分）</span><span>${pts.length} 个周期</span></div>
+  const pts = r.minute.map(m => ({t: m.t, v: m.rate_cpm, n: m.viewers}));
+  const W = 320, H = 150, P = 26, B = H - 30, fast = r.snap.thresholds?.rate_fast ?? 380, slow = r.snap.thresholds?.rate_slow ?? 160;
+  if (pts.length < 1) { box.innerHTML = `<div class="cap"><span>语速 · 在线人数</span></div><div class="muted" style="font-size:12px;padding:20px 0">等待第一个分析周期…</div>`; return; }
+  // 横轴从 0 开始：第一个周期前就可能有违禁词告警
+  const t1 = Math.max(pts.at(-1).t, ...r.alerts.map(a => a.t), 1);
+  const x = t => P + t / t1 * (W - 2 * P);
+  const maxV = Math.max(fast + 60, ...pts.map(p => p.v));
+  const y = v => B - v / maxV * (B - 8);
+  const line = (ps, yf) => ps.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${yf(p).toFixed(1)}`).join("");
+  // 在线人数用右侧独立刻度，上下各留 10% 余量，波动才看得出来
+  const vp = pts.filter(p => p.n != null);
+  let viewers = "", vCap = `<span class="muted">无在线人数</span>`;
+  if (vp.length) {
+    const lo = Math.min(...vp.map(p => p.n)), hi = Math.max(...vp.map(p => p.n)), pad = Math.max((hi - lo) * 0.1, hi * 0.05, 1);
+    const yn = n => B - (n - lo + pad) / (hi - lo + 2 * pad) * (B - 8);
+    viewers = `<path d="${line(vp, p => yn(p.n))}" fill="none" stroke="var(--viewers)" stroke-width="1.5"/>
+      ${vp.map(p => `<circle cx="${x(p.t)}" cy="${yn(p.n)}" r="2.5" fill="var(--viewers)"><title>${fmt(p.t)} 在线 ${p.n} 人</title></circle>`).join("")}
+      <text x="${W - P + 5}" y="${yn(hi) + 3}" style="fill:var(--viewers)">${hi}</text>
+      ${hi > lo ? `<text x="${W - P + 5}" y="${yn(lo) + 3}" style="fill:var(--viewers)">${lo}</text>` : ""}`;
+    vCap = `<span style="color:var(--viewers)">● 在线 ${vp.at(-1).n}</span>`;
+  }
+  // 告警标在底部时间轴上，按严重程度着色；对照人数曲线看问题之后人有没有走
+  // 同一个周期的告警时间相同会叠在一起：合并成一根，颜色取最严重的，旁边标数量
+  const SEV = {high: "var(--high)", medium: "var(--medium)", low: "var(--low)"}, RANK = {high: 0, medium: 1, low: 2};
+  const groups = {};
+  for (const a of r.alerts) (groups[Math.round(x(a.t))] ||= []).push(a);
+  const ticks = Object.entries(groups).map(([gx, as]) => {
+    as.sort((a, b) => (RANK[a.severity] ?? 3) - (RANK[b.severity] ?? 3));
+    const tip = as.map(a => `${fmt(a.t)} ${esc(a.title)}`).join("\n");
+    return `<g><title>${tip}</title><line x1="${gx}" x2="${gx}" y1="${B + 4}" y2="${B + 14}" stroke="${SEV[as[0].severity] || "var(--muted)"}" stroke-width="2"/>
+      ${as.length > 1 ? `<text x="${+gx + 2}" y="${B + 3}" style="font-size:8px">${as.length}</text>` : ""}</g>`;
+  }).join("");
+  box.innerHTML = `<div class="cap"><span><span style="color:var(--accent)">● 语速（字/分）</span> ${vCap}</span><span>${r.alerts.length} 条告警</span></div>
     <svg viewBox="0 0 ${W} ${H}" width="100%">
       <rect x="${P}" y="${y(fast)}" width="${W - 2 * P}" height="${y(slow) - y(fast)}" fill="var(--ok)" opacity=".08"/>
       <line x1="${P}" x2="${W - P}" y1="${y(fast)}" y2="${y(fast)}" stroke="var(--high)" stroke-dasharray="3 3" opacity=".6"/>
-      <text x="${W - P + 2}" y="${y(fast) + 3}">${fast}</text>
+      <text x="${P - 2}" y="${y(fast) + 3}" text-anchor="end">${fast}</text>
       <line x1="${P}" x2="${W - P}" y1="${y(slow)}" y2="${y(slow)}" stroke="var(--medium)" stroke-dasharray="3 3" opacity=".6"/>
-      <text x="${W - P + 2}" y="${y(slow) + 3}">${slow}</text>
-      <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      <text x="${P - 2}" y="${y(slow) + 3}" text-anchor="end">${slow}</text>
+      ${viewers}
+      <path d="${line(pts, p => y(p.v))}" fill="none" stroke="var(--accent)" stroke-width="2"/>
       ${pts.map(p => `<circle cx="${x(p.t)}" cy="${y(p.v)}" r="3" fill="${p.v > fast ? "var(--high)" : "var(--accent)"}"><title>${fmt(p.t)} ${p.v} 字/分</title></circle>`).join("")}
-      <text x="${P}" y="${H - 4}">${fmt(t0)}</text><text x="${W - P}" y="${H - 4}" text-anchor="end">${fmt(t1)}</text>
+      <line x1="${P}" x2="${W - P}" y1="${B + 9}" y2="${B + 9}" stroke="var(--line)"/>
+      ${ticks}
+      <text x="${P}" y="${H - 2}">00:00</text><text x="${W - P}" y="${H - 2}" text-anchor="end">${fmt(t1)}</text>
     </svg>`;
 }
 
@@ -353,6 +381,7 @@ async function showReport() {
       ${card("平均语速", o.rate_cpm + "<small>字/分</small>", "讲话占比 " + Math.round(o.talk_ratio * 100) + "%")}
       ${card("告警总数", rep.alert_total, Object.entries(rep.alert_by_source).map(([k, v]) => `${SRC[k] || k} ${v}`).join(" · "))}
       ${card("平均话术评分", rep.score_avg ?? "—", rep.score_trend.length + " 次 AI 分析")}
+      ${rep.viewers ? card("在线人数", rep.viewers.avg + "<small>人（均值）</small>", `峰值 ${rep.viewers.peak} · 最低 ${rep.viewers.low}`) : ""}
     </div>
     <h3 style="font-size:14px">重点问题</h3>
     ${rep.top_alerts.map(a => alertHtml(a)).join("") || `<div class="muted">本场没有告警</div>`}`;

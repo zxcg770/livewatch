@@ -12,6 +12,7 @@ import json
 import logging
 import signal
 import sys
+import threading
 import time
 import wave
 from datetime import datetime
@@ -48,8 +49,26 @@ def main() -> None:
     stream = AudioStream(source, args.target)
     signal.signal(signal.SIGINT, lambda *_: stream.stop())
 
-    target_bytes = int(args.minutes * 60 * BYTES_PER_SEC)
+    # 同步记录在线人数，回放时 FileSource 按音频时间读回来
+    viewers_path = out.with_suffix(".viewers.jsonl")
+    viewers_path.write_text("")
+    done = threading.Event()
     written = 0
+
+    def poll_viewers() -> None:
+        while not done.is_set():
+            try:
+                v = source.viewers(args.target, written / BYTES_PER_SEC)
+                if v is not None:
+                    with viewers_path.open("a") as f:
+                        f.write(json.dumps({"t": round(written / BYTES_PER_SEC, 1), "viewers": v}) + "\n")
+            except Exception as e:  # noqa: BLE001
+                logging.warning("获取在线人数失败: %s", e)
+            done.wait(30)
+
+    threading.Thread(target=poll_viewers, daemon=True).start()
+
+    target_bytes = int(args.minutes * 60 * BYTES_PER_SEC)
     last_print = 0.0
     with wave.open(str(out), "wb") as wf:
         wf.setnchannels(CHANNELS)
@@ -66,6 +85,7 @@ def main() -> None:
                 stream.stop()
                 break
 
+    done.set()
     duration = written / BYTES_PER_SEC
     meta = {
         "platform": info.platform,

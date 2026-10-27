@@ -47,6 +47,13 @@ def _similar(a: str, b: str, threshold: float = 0.6) -> bool:
     return len(ga & gb) / min(len(ga), len(gb)) >= threshold
 
 
+def _viewer_stats(minute_metrics: list[dict]) -> dict | None:
+    vs = [m["viewers"] for m in minute_metrics if m.get("viewers") is not None]
+    if not vs:
+        return None
+    return {"peak": max(vs), "low": min(vs), "avg": round(sum(vs) / len(vs)), "last": vs[-1]}
+
+
 class RoomSession:
     def __init__(
         self,
@@ -79,6 +86,7 @@ class RoomSession:
         self._stream: AudioStream | None = None
         self._pool = ThreadPoolExecutor(max_workers=1)
         self._analyzing = False
+        self._source = None
         self.dir = SESSIONS_DIR / f"{datetime.now():%Y%m%d_%H%M%S}_{self.id}"
 
     # ---------- 生命周期 ----------
@@ -119,7 +127,7 @@ class RoomSession:
     # ---------- 主循环（音频线程） ----------
     def _run(self) -> None:
         try:
-            source = get_source(self.target)
+            source = self._source = get_source(self.target)
             if isinstance(source, FileSource):
                 source.speed = self.speed
             si = source.resolve(self.target)
@@ -152,7 +160,9 @@ class RoomSession:
 
             for seg in asr.flush():
                 self._on_segment(seg, checker)
-            self._schedule_analysis(self.audio_sec, final=True)
+            # 录音刚好在周期点结束时，最后一个周期已经分析过，不再重复一次
+            if self.audio_sec - (next_tick - self.interval) > 5:
+                self._schedule_analysis(self.audio_sec, final=True)
             self._pool.shutdown(wait=True)
             self.status = "ended"
         except Exception as e:  # noqa: BLE001
@@ -193,6 +203,7 @@ class RoomSession:
             # 表达指标看最近一个周期（及时、且不会因 5 分钟窗口重叠而重复报警）
             m_min = metrics_mod.compute(all_segs, max(0.0, t_end - self.interval), t_end, th, open_tail)
             m_win = metrics_mod.compute(all_segs, t_start, t_end, th, open_tail)
+            m_min["viewers"] = self._viewers(t_end)
             self.minute_metrics.append({"t": round(t_end, 1), **m_min})
             self._save("metrics.jsonl", {"t": t_end, "minute": m_min, "window": m_win})
             self.emit("metrics", {"t": round(t_end, 1), "minute": m_min, "window": m_win})
@@ -216,6 +227,14 @@ class RoomSession:
             self.emit("error", {"message": str(e), "t": round(t_end, 1)})
         finally:
             self._analyzing = False
+
+    def _viewers(self, t: float) -> int | None:
+        """跟着每分钟的指标一起取在线人数；拿不到不影响分析。"""
+        try:
+            return self._source.viewers(self.target, t) if self._source else None
+        except Exception as e:  # noqa: BLE001
+            log.warning("获取在线人数失败: %s", e)
+            return None
 
     # ---------- 告警去重 ----------
     def _raise_alert(self, alert: dict, t: float) -> None:
@@ -284,5 +303,6 @@ class RoomSession:
             "score_avg": round(sum(scores) / len(scores)) if scores else None,
             "score_trend": [{"t": a["t"], "score": a.get("score")} for a in self.analyses],
             "rate_trend": [{"t": m["t"], "rate": m["rate_cpm"]} for m in self.minute_metrics],
+            "viewers": _viewer_stats(self.minute_metrics),
             "top_alerts": top[:10],
         }
