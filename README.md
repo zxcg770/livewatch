@@ -1,6 +1,6 @@
-# LiveWatch
+# LiveWatch · AI 盯播工具
 
-[![CI](https://github.com/zxcg770/livewatch/actions/workflows/ci.yml/badge.svg)](https://github.com/zxcg770/livewatch/actions/workflows/ci.yml) · AI 盯播工具
+[![CI](https://github.com/zxcg770/livewatch/actions/workflows/ci.yml/badge.svg)](https://github.com/zxcg770/livewatch/actions/workflows/ci.yml)
 
 实时识别主播讲解内容，及时发现直播中的问题：**语速 / 节奏 / 冷场**（本地实时计算）、**违禁词**（秒级告警）、**话术缺失与合规风险**（大模型每分钟对照话术框架分析最近 5 分钟）。
 
